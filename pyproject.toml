@@ -1,0 +1,18 @@
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "django-smart-cache"
+version = "0.1.0"
+description = "A model-aware caching utility for Django applications."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "Django>=4.2",
+]
+
+[tool.setuptools.packages.find]
+include = ["django_smart_cache*"]
