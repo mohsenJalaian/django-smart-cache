@@ -8,7 +8,7 @@ from .cache_registry import register_cache_key
 from .conf import get_default_timeout
 
 
-def smart_cache(timeout=None, model=None, vary_on_user=False):
+def smart_cache(timeout=None, model=None, vary_on_user=True):
     if timeout is None:
         timeout = get_default_timeout()
 
@@ -24,7 +24,11 @@ def smart_cache(timeout=None, model=None, vary_on_user=False):
             # Only cache GET and HEAD requests
             if request.method not in ["GET", "HEAD"]:
                 return view_func(request, *args, **kwargs)
+            if vary_on_user:
+                user = getattr(request, "user", None)
 
+                if not getattr(user, "is_authenticated", False):
+                    return view_func(request, *args, **kwargs)
             cache_key = generate_cache_key(
                 request,
                 vary_on_user=vary_on_user,

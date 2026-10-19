@@ -2,7 +2,7 @@
 import hashlib
 
 
-def generate_cache_key(request, vary_on_user=False):
+def generate_cache_key(request, vary_on_user=True):
     method = request.method
     path = request.get_full_path()
 

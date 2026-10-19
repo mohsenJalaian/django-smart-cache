@@ -20,6 +20,15 @@ class SmartCacheTests(SimpleTestCase):
         self.factory = RequestFactory()
         cache.clear()
 
+    def authenticated_request(self, path):
+        request = self.factory.get(path)
+        request.user = type(
+            "User",
+            (),
+            {"pk": 1, "is_authenticated": True},
+        )()
+        return request
+
     @patch("django_smart_cache.decorators.cache")
     def test_get_response_is_cached(self, mock_cache):
         mock_cache.get.return_value = None
@@ -28,7 +37,7 @@ class SmartCacheTests(SimpleTestCase):
         def my_view(request):
             return HttpResponse("Hello")
 
-        request = self.factory.get("/test/")
+        request = self.authenticated_request("/test/")
         response = my_view(request)
 
         self.assertEqual(response.status_code, 200)
@@ -70,7 +79,7 @@ class SmartCacheTests(SimpleTestCase):
         def my_view(request):
             return HttpResponse("Fresh Hello")
 
-        request = self.factory.get("/test/")
+        request = self.authenticated_request("/test/")
         response = my_view(request)
 
         self.assertEqual(response.content, b"Cached Hello")
@@ -118,7 +127,7 @@ class SmartCacheTests(SimpleTestCase):
         def my_view(request):
             return HttpResponse("Hello")
 
-        request = self.factory.get("/test/")
+        request = self.authenticated_request("/test/")
         my_view(request)
 
         mock_cache.set.assert_called_once()
@@ -133,7 +142,7 @@ class SmartCacheTests(SimpleTestCase):
         def my_view(request):
             return HttpResponse("Hello")
 
-        request = self.factory.get("/test/")
+        request =self.authenticated_request("/test/")
         my_view(request)
 
         mock_cache.set.assert_called_once()
@@ -148,10 +157,19 @@ class SmartCacheTests(SimpleTestCase):
             return HttpResponse("Hello")
 
         request1 = self.factory.get("/profile/")
-        request1.user = type("User", (), {"pk": 1})()
+        request1.user = type(
+             "User",
+              (),
+              {"pk": 1, "is_authenticated": True},
+        )()
+
 
         request2 = self.factory.get("/profile/")
-        request2.user = type("User", (), {"pk": 2})()
+        request2.user = type(
+            "User",
+            (),
+            {"pk": 2, "is_authenticated": True},
+        )()
 
         my_view(request1)
         my_view(request2)
@@ -174,14 +192,14 @@ class SmartCacheTests(SimpleTestCase):
         view.assert_called_once_with(request)
 
     def test_model_cache_key_is_registered(self):
-        request = self.factory.get("/articles/")
+        request =  self.authenticated_request("/articles/")
 
         view = Mock(return_value=HttpResponse("Article list"))
         decorated_view = smart_cache(model=TestArticle)(view)
 
         decorated_view(request)
 
-        cache_key = generate_cache_key(request)
+        cache_key = generate_cache_key(request, vary_on_user=True)
         registry = cache.get(REGISTRY_KEY, {})
 
         self.assertIn(
@@ -209,10 +227,18 @@ class SmartCacheTests(SimpleTestCase):
 
     def test_different_users_receive_separate_cached_responses(self):
         request1 = self.factory.get("/profile/")
-        request1.user = type("User", (), {"pk": 1})()
+        request1.user = type(
+            "User",
+            (),
+            {"pk": 1, "is_authenticated": True},
+        )()
 
         request2 = self.factory.get("/profile/")
-        request2.user = type("User", (), {"pk": 2})()
+        request2.user = type(
+            "User",
+            (),
+            {"pk": 2, "is_authenticated": True},
+        )()
 
         view = Mock(
             side_effect=[
@@ -230,7 +256,7 @@ class SmartCacheTests(SimpleTestCase):
         self.assertEqual(view.call_count, 2)
 
     def test_cached_response_does_not_call_view_again(self):
-        request = self.factory.get("/articles/")
+        request = self.authenticated_request("/articles/")
 
         view = Mock(return_value=HttpResponse("Article list"))
         decorated_view = smart_cache(model=TestArticle)(view)
@@ -240,3 +266,35 @@ class SmartCacheTests(SimpleTestCase):
 
         self.assertEqual(first_response.content, second_response.content)
         view.assert_called_once_with(request)
+
+
+    def test_default_cache_key_is_user_specific(self):
+        request1 = self.factory.get("/profile/")
+        request1.user = type("User", (), {"pk": 1})()
+
+        request2 = self.factory.get("/profile/")
+        request2.user = type("User", (), {"pk": 2})()
+
+        key1 = generate_cache_key(request1)
+        key2 = generate_cache_key(request2)
+
+        self.assertNotEqual(key1, key2)
+
+    @patch("django_smart_cache.decorators.cache")
+    def test_anonymous_user_bypasses_cache_by_default(self, mock_cache):
+            request = self.factory.get("/profile/")
+            request.user = type(
+                "AnonymousUser",
+                (),
+                {"is_authenticated": False},
+            )()
+
+            view = Mock(return_value=HttpResponse("Anonymous response"))
+            decorated_view = smart_cache()(view)
+
+            response = decorated_view(request)
+
+            self.assertEqual(response.content, b"Anonymous response")
+            mock_cache.get.assert_not_called()
+            mock_cache.set.assert_not_called()
+            view.assert_called_once_with(request)

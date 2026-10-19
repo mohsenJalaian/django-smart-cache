@@ -7,7 +7,8 @@ A Django utility for caching successful GET responses with configurable timeouts
 - Cache successful, non-streaming GET responses.
 - Configure the default cache timeout.
 - Generate cache keys from request URLs.
-- Optionally separate cached responses by user.
+- Separate cached responses by authenticated user by default.
+- Bypass caching for anonymous users by default, with an option for shared public caching.
 - Associate cached responses with Django models for cache invalidation.
 - Automatically invalidate registered model cache entries when a model instance is saved or deleted.
 
@@ -68,15 +69,23 @@ If `timeout` is omitted, the value of `SMART_CACHE_TIMEOUT` is used.
 
 ### Separate cache entries by user
 
-Use `vary_on_user=True` when the response depends on the current user:
+By default, `vary_on_user=True`. Authenticated users receive separate cache entries based on their user ID, while anonymous requests bypass the cache.
 
 ```python
-@smart_cache(timeout=60, vary_on_user=True)
+@smart_cache(timeout=60)
 def my_articles(request):
     ...
 ```
 
-This includes the user's primary key in the cache key so different users receive separate cache entries.
+For public views that return identical content to all users, set `vary_on_user=False` to enable shared caching, including for anonymous users:
+
+```python
+@smart_cache(timeout=60, vary_on_user=False)
+def public_articles(request):
+    ...
+```
+
+Only use shared caching when the response does not contain user-specific or sensitive content.
 
 ### Invalidate cache entries when a model changes
 
@@ -100,48 +109,4 @@ When an instance of that model is saved or deleted, the registered cache entries
 
 - Only HTTP 200 responses are cached.
 - Only non-streaming GET responses are stored.
-- HEAD requests may reuse an existing cache entry but do not create new entries.
-- Requests using other HTTP methods bypass the cache.
-- Query strings are included in cache key generation.
-- Cache keys can optionally vary by user.
-- Model-based invalidation applies to cache entries registered through the `model` argument.
-
-## Security Considerations
-
-Use caution when caching user-specific or sensitive responses.
-
-By default, cache keys do not vary by user. If a view returns different content for different users, use `vary_on_user=True` or an appropriate caching strategy that prevents one user from receiving another user's response.
-
-Review authorization, permissions, and cache invalidation requirements before using this library in production.
-
-## Development
-
-Clone the repository and install the package's build tools:
-
-```bash
-python -m pip install setuptools wheel build
-```
-
-Run the automated test suite from the project root:
-
-```bash
-python -m django test tests --settings=test_settings
-```
-
-Build the distribution packages:
-
-```bash
-python -m build --no-isolation
-```
-
-The generated distribution files are placed in the `dist/` directory.
-
-## Development Status
-
-This project is under active development. The current test suite covers cache key generation, response caching, request handling, and model-based cache invalidation.
-
-Contributions, bug reports, and suggestions are welcome.
-
-## License
-
-MIT
+- HEAD requests bypass
